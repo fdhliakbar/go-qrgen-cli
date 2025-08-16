@@ -9,6 +9,11 @@ A simple, fast, and powerful command-line QR code generator built with Go.
 ## ✨ Features
 
 - 📝 Generate QR codes from text, URLs, or files
+- 🖼️ **NEW!** Encode images as base64 data URIs
+- 📶 **NEW!** Generate WiFi QR codes for easy connection
+- 👤 **NEW!** Create QR codes from vCard contact files
+- 📱 **NEW!** ASCII QR preview in terminal
+- 🔄 **NEW!** Batch processing multiple inputs
 - 🎨 Customizable size and error correction levels
 - 💾 PNG output format
 - 🔍 URL validation
@@ -54,11 +59,17 @@ qrgen -u "https://github.com/yourusername"
 # Generate QR from file
 qrgen -f input.txt
 
-# Custom output filename
-qrgen -t "My Text" -o my_qr.png
+# NEW! WiFi QR code
+qrgen -w "MyWiFi:password123:WPA" -o wifi.png
 
-# Large QR code (512x512)
-qrgen -t "Big QR Code" -s 512
+# NEW! Image to base64 QR
+qrgen -i company_logo.png -o logo_qr.png
+
+# NEW! Preview in terminal
+qrgen -t "Preview Test" --preview
+
+# Custom output filename and size
+qrgen -t "My Text" -o my_qr.png -s 512
 
 # High quality error correction
 qrgen -u "https://important-site.com" -q highest
@@ -67,15 +78,22 @@ qrgen -u "https://important-site.com" -q highest
 ### Advanced Examples
 
 ```bash
-# Generate multiple QR codes with different settings
-qrgen -u "https://github.com" -o github.png -s 400 -q high
-qrgen -f company_info.txt -o company_qr.png -s 600 --quiet
+# Contact QR from vCard file
+qrgen --vcard contact.vcf -o contact_qr.png
 
-# Batch processing (using shell)
-for url in $(cat urls.txt); do
-    filename=$(echo $url | sed 's|https://||' | sed 's|/|_|g')
-    qrgen -u "$url" -o "qr_${filename}.png" --quiet
-done
+# Batch processing URLs
+echo "https://github.com" > urls.txt
+echo "https://google.com" >> urls.txt
+qrgen -f urls.txt --batch
+
+# Large WiFi QR with preview
+qrgen -w "CoffeeShop:free123:WPA" -s 600 --preview -o cafe_wifi.png
+
+# Process image with high quality
+qrgen -i screenshot.png -q highest -s 800 -o screenshot_qr.png
+
+# Silent batch processing
+qrgen -f company_urls.txt --batch --quiet
 ```
 
 ## 🎛️ Command Line Options
@@ -85,9 +103,14 @@ done
 | `-t` | `--text` | Text to encode in QR code | - |
 | `-u` | `--url` | URL to encode in QR code | - |
 | `-f` | `--file` | File containing text to encode | - |
+| `-i` | `--image` | **NEW!** Image file to encode as base64 | - |
+| `-w` | `--wifi` | **NEW!** WiFi credentials (SSID:PASSWORD:SECURITY) | - |
+| | `--vcard` | **NEW!** vCard file for contact info | - |
+| | `--batch` | **NEW!** Batch process multiple inputs | `false` |
 | `-o` | `--output` | Output file name | `qr.png` |
 | `-s` | `--size` | QR code size in pixels | `256` |
 | `-q` | `--quality` | Error correction level | `medium` |
+| | `--preview` | **NEW!** Show ASCII QR preview | `false` |
 | | `--quiet` | Quiet mode (no output messages) | `false` |
 | `-h` | `--help` | Show help message | - |
 | `-v` | `--version` | Show version | - |
