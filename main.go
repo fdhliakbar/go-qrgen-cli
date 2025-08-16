@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/skip2/go-qrcode"
+	"golang.org/x/image/draw"
 )
 
 const (
@@ -23,20 +26,21 @@ const (
 )
 
 type Config struct {
-	Text    string
-	URL     string
-	File    string
-	Image   string
-	WiFi    string
-	VCard   string
-	Output  string
-	Size    int
-	Quiet   bool
-	Help    bool
-	Version bool
-	Quality string
-	Batch   bool
-	Preview bool
+	Text        string
+	URL         string
+	File        string
+	Image       string
+	WiFi        string
+	VCard       string
+	Output      string
+	Size        int
+	ImageResize int
+	Quiet       bool
+	Help        bool
+	Version     bool
+	Quality     string
+	Batch       bool
+	Preview     bool
 }
 
 func main() {
@@ -121,6 +125,8 @@ func parseFlags() Config {
 	flag.StringVar(&config.Image, "image", "", "Image file to encode as base64")
 	flag.StringVar(&config.Image, "i", "", "Image file to encode as base64 (shorthand)")
 
+	flag.IntVar(&config.ImageResize, "img-size", 200, "Resize image to this width/height before encoding")
+
 	flag.StringVar(&config.WiFi, "wifi", "", "WiFi credentials: 'SSID:PASSWORD:SECURITY'")
 	flag.StringVar(&config.WiFi, "w", "", "WiFi credentials (shorthand)")
 
@@ -162,7 +168,7 @@ func getInputContent(config Config) (string, error) {
 	}
 
 	if config.Image != "" {
-		return encodeImageToBase64(config.Image)
+		return encodeImageToBase64(config.Image, config.ImageResize)
 	}
 
 	if config.File != "" {
@@ -279,6 +285,7 @@ INPUT OPTIONS:
     -u, --url       URL to encode in QR code  
     -f, --file      File containing text to encode
     -i, --image     Image file to encode as base64 data URI
+    --img-size      Resize image to this size before encoding (default: 200)
     -w, --wifi      WiFi credentials (SSID:PASSWORD:SECURITY)
     --vcard         vCard file (.vcf) for contact info
     --batch         Batch process multiple inputs from file
@@ -345,38 +352,99 @@ func showUsage() {
 }
 
 // New functions for enhanced features
-func encodeImageToBase64(imagePath string) (string, error) {
+func encodeImageToBase64(imagePath string, maxSize int) (string, error) {
 	file, err := os.Open(imagePath)
 	if err != nil {
 		return "", fmt.Errorf("cannot open image file %s: %v", imagePath, err)
 	}
 	defer file.Close()
 
-	// Read file content
-	data, err := io.ReadAll(file)
+	// Get file info for size check
+
+	fmt.Printf("📁 Original file size: %s\n", getFileSize(imagePath))
+
+	// Decode image
+	img, format, err := image.Decode(file)
 	if err != nil {
-		return "", fmt.Errorf("cannot read image file: %v", err)
+		return "", fmt.Errorf("cannot decode image: %v", err)
 	}
 
-	// Get file extension for MIME type
-	ext := strings.ToLower(filepath.Ext(imagePath))
-	var mimeType string
-	switch ext {
-	case ".jpg", ".jpeg":
-		mimeType = "image/jpeg"
-	case ".png":
-		mimeType = "image/png"
-	case ".gif":
-		mimeType = "image/gif"
-	case ".webp":
-		mimeType = "image/webp"
+	fmt.Printf("📐 Original dimensions: %dx%d\n", img.Bounds().Dx(), img.Bounds().Dy())
+
+	// Resize image if it's too large
+	if img.Bounds().Dx() > maxSize || img.Bounds().Dy() > maxSize {
+		fmt.Printf("🔄 Resizing image to %dx%d...\n", maxSize, maxSize)
+		img = resizeImage(img, maxSize, maxSize)
+	}
+
+	// Create temporary file for compressed image
+	tempFile, err := os.CreateTemp("", "qrimg_*."+format)
+	if err != nil {
+		return "", fmt.Errorf("cannot create temp file: %v", err)
+	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	// Encode with compression
+	switch format {
+	case "jpeg", "jpg":
+		err = jpeg.Encode(tempFile, img, &jpeg.Options{Quality: 60}) // Lower quality for smaller size
+	case "png":
+		// Convert PNG to JPEG for better compression
+		err = jpeg.Encode(tempFile, img, &jpeg.Options{Quality: 60})
+		format = "jpeg"
 	default:
-		mimeType = "image/png"
+		err = jpeg.Encode(tempFile, img, &jpeg.Options{Quality: 60})
+		format = "jpeg"
 	}
 
-	// Encode to base64
-	encoded := base64.StdEncoding.EncodeToString(data)
-	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
+	if err != nil {
+		return "", fmt.Errorf("cannot encode compressed image: %v", err)
+	}
+
+	// Read compressed data
+	tempFile.Seek(0, 0)
+	compressedData, err := io.ReadAll(tempFile)
+	if err != nil {
+		return "", fmt.Errorf("cannot read compressed image: %v", err)
+	}
+
+	fmt.Printf("📦 Compressed size: %.1f KB\n", float64(len(compressedData))/1024)
+
+	// Check if still too large for QR code
+	encoded := base64.StdEncoding.EncodeToString(compressedData)
+	dataURI := fmt.Sprintf("data:image/%s;base64,%s", format, encoded)
+
+	if len(dataURI) > 4000 { // QR Code practical limit
+		return "", fmt.Errorf("image still too large after compression (%d chars). Try a smaller image or lower --img-size", len(dataURI))
+	}
+
+	fmt.Printf("✅ Final base64 length: %d characters\n", len(dataURI))
+	return dataURI, nil
+}
+
+func resizeImage(src image.Image, width, height int) image.Image {
+	// Calculate aspect ratio
+	srcBounds := src.Bounds()
+	srcW, srcH := srcBounds.Dx(), srcBounds.Dy()
+
+	// Calculate new dimensions maintaining aspect ratio
+	var newW, newH int
+	if srcW > srcH {
+		newW = width
+		newH = srcH * width / srcW
+	} else {
+		newH = height
+		newW = srcW * height / srcH
+	}
+
+	// Create new image
+	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+
+	// Resize using high quality algorithm
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, srcBounds, draw.Over, nil)
+
+	return dst
 }
 
 func generateWiFiQR(wifiConfig string) (string, error) {
@@ -436,7 +504,7 @@ func showASCIIPreview(content string) {
 	qr, err := qrcode.New(content, qrcode.Medium)
 	if err != nil {
 		fmt.Println("│ Cannot generate preview │")
-		fmt.Printf("Content: %s\n", truncateString(content, 50))
+		fmt.Println("╰─────────────────────╯\n")
 		return
 	}
 
