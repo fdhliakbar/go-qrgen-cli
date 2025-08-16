@@ -1,6 +1,7 @@
 # QR Code Generator CLI
 
 A simple, fast, and powerful command-line QR code generator built with Go.
+<img src="https://i.pinimg.com/1200x/55/a9/ab/55a9aba97d1e214f849ab2e55f3dabff.jpg" alt="Go Banner"/>
 
 ![Go Version](https://img.shields.io/badge/Go-1.19+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -113,7 +114,9 @@ qrgen -f company_urls.txt --batch --quiet
 
 ## Examples
 
-You can test this QR code, which will lead to github.com/fdhliakbar
+<p>You can test this QR code, which will lead to github.com/fdhliakbar</p>
+<div style="display: flex; justify-content:center">
 <img src="./github.png" alt="Github QR Code"/>
+</div>
 
 ---
